@@ -1,0 +1,143 @@
+# ============================================================
+# Python
+# ============================================================
+
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+MANIFEST
+*.manifest
+*.spec
+
+
+# ============================================================
+# PyCharm / JetBrains
+# ============================================================
+
+.idea/
+*.iml
+.localhistory/
+
+
+# ============================================================
+# Jupyter
+# ============================================================
+
+.ipynb_checkpoints/
+
+
+# ============================================================
+# Testing / Coverage
+# ============================================================
+
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.hypothesis/
+
+
+# ============================================================
+# Environment / Secrets
+# ============================================================
+
+.env
+.env.*
+!.env.example
+
+.streamlit/secrets.toml
+secrets.toml
+
+*.pem
+*.key
+
+
+# ============================================================
+# DATA
+# ============================================================
+
+# Original/raw/proprietary data
+data/raw/
+data/processed/
+data/tmp/
+data/temp/
+tests/__init__.py
+tests/test_data.py
+tests/test_features.py
+tests/test_ml.py
+# The sanitized public dataset is intentionally allowed:
+# data/alarms.csv
+
+
+# ============================================================
+# MACHINE LEARNING MODELS
+# ============================================================
+
+models/*.joblib
+models/*.pkl
+models/*.pickle
+models/*.onnx
+
+!models/.gitkeep
+
+
+# ============================================================
+# Logs
+# ============================================================
+
+*.log
+logs/
+
+
+# ============================================================
+# Operating System Files
+# ============================================================
+
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+
+# ============================================================
+# Temporary Files
+# ============================================================
+
+*.swp
+*.swo
+*.tmp
+*.temp
+*.bak
+*.orig
+
+
+# ============================================================
+# Excel / Spreadsheet Files
+# ============================================================
+
+*.xlsx
+*.xls
+*.xlsm
+*.xlsb
