@@ -4,6 +4,4 @@ numpy
 scikit-learn
 hdbscan
 plotly
-openpyxl
-joblib
 pytest

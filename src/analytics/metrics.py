@@ -1,8 +1,9 @@
 import pandas as pd
 
 
-def calculate_basic_metrics(df: pd.DataFrame) -> dict:
-    """Calculate high-level descriptive metrics."""
+def calculate_basic_metrics(
+    df: pd.DataFrame,
+) -> dict:
 
     return {
         "total_events": len(df),
@@ -32,19 +33,19 @@ def calculate_basic_metrics(df: pd.DataFrame) -> dict:
         ),
 
         "active_events": (
-            df["IsActive"].sum()
+            int(df["IsActive"].sum())
             if "IsActive" in df.columns
             else 0
         ),
 
         "acked_events": (
-            df["IsAcked"].sum()
+            int(df["IsAcked"].sum())
             if "IsAcked" in df.columns
             else 0
         ),
 
         "normal_events": (
-            df["IsNormal"].sum()
+            int(df["IsNormal"].sum())
             if "IsNormal" in df.columns
             else 0
         ),

@@ -62,6 +62,11 @@ def priority_chart(df):
         title="Alarm Activity by Priority",
     )
 
+    fig.update_layout(
+        xaxis_title="Priority",
+        yaxis_title="Alarm Count",
+    )
+
     return fig
 
 
@@ -71,7 +76,24 @@ def state_chart(df):
         df,
         x="Alarm State",
         y="Alarm Count",
-        title="Alarm Activity by State",
+        title="Alarm Activity by Alarm State",
+    )
+
+    fig.update_layout(
+        xaxis_title="Alarm State",
+        yaxis_title="Alarm Count",
+    )
+
+    return fig
+
+
+def type_chart(df):
+
+    fig = px.bar(
+        df,
+        x="Type",
+        y="Alarm Count",
+        title="Alarm Activity by Type",
     )
 
     return fig
@@ -91,8 +113,18 @@ def cluster_chart(df):
             "AlarmCount",
             "UniqueTags",
             "ActiveCount",
+            "AckedCount",
+            "NormalCount",
         ],
-        title="HDBSCAN Alarm Activity Clusters",
+        title=(
+            "HDBSCAN Alarm Activity Clusters "
+            "(PCA Projection)"
+        ),
+    )
+
+    fig.update_layout(
+        xaxis_title="PCA Component 1",
+        yaxis_title="PCA Component 2",
     )
 
     return fig

@@ -1,14 +1,23 @@
 import pandas as pd
 
 
-def add_alarm_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Create simple indicators from recorded alarm states."""
+def add_alarm_features(
+    df: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Add binary features representing the recorded SCADA alarm state.
+
+    Important:
+        These fields describe recorded alarm states.
+        They do not infer operator behavior or a complete
+        alarm lifecycle.
+    """
 
     result = df.copy()
 
     state = (
         result["Alarm State"]
-        .astype(str)
+        .astype("string")
         .str.strip()
         .str.lower()
     )

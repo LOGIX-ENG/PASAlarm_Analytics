@@ -10,45 +10,71 @@ def evaluate_clusters(
     scaled_features,
     labels,
 ) -> dict:
+    """
+    Evaluate HDBSCAN clustering.
+
+    Noise observations (-1) are excluded from the
+    silhouette and Davies-Bouldin calculations.
+
+    Noise percentage is reported separately.
+    """
 
     labels = np.asarray(labels)
 
-    non_noise = labels != -1
+    total_observations = len(labels)
 
-    cluster_labels = labels[non_noise]
+    noise_mask = labels == -1
+    non_noise_mask = ~noise_mask
 
-    unique_clusters = set(
-        cluster_labels
+    noise_count = int(
+        noise_mask.sum()
     )
 
-    results = {
+    noise_percentage = (
+        noise_count / total_observations * 100
+        if total_observations > 0
+        else 0.0
+    )
+
+    non_noise_labels = labels[
+        non_noise_mask
+    ]
+
+    unique_clusters = np.unique(
+        non_noise_labels
+    )
+
+    results: dict[str, int | float | None] = {
+        "observation_count": total_observations,
         "cluster_count": len(unique_clusters),
-        "noise_count": int(
-            (labels == -1).sum()
-        ),
-        "noise_percentage": float(
-            (labels == -1).mean() * 100
-        ),
+        "noise_count": noise_count,
+        "noise_percentage": noise_percentage,
         "silhouette_score": None,
         "davies_bouldin_score": None,
     }
 
+    # At least two clusters are required for both
+    # clustering quality metrics.
     if (
         len(unique_clusters) >= 2
-        and non_noise.sum() > len(unique_clusters)
+        and len(non_noise_labels) > len(unique_clusters)
     ):
+
+        non_noise_features = (
+            scaled_features[non_noise_mask]
+        )
 
         results["silhouette_score"] = (
             silhouette_score(
-                scaled_features[non_noise],
-                cluster_labels,
+                non_noise_features,
+                non_noise_labels,
             )
         )
 
         results["davies_bouldin_score"] = (
             davies_bouldin_score(
-                scaled_features[non_noise],
-                cluster_labels,
+                non_noise_features,
+                non_noise_labels,
             )
         )
 

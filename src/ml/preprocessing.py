@@ -1,5 +1,4 @@
 import pandas as pd
-
 from sklearn.preprocessing import StandardScaler
 
 
@@ -19,7 +18,15 @@ ML_FEATURES = [
 def prepare_ml_data(
     window_df: pd.DataFrame,
 ):
-    """Prepare and standardize numerical features for HDBSCAN."""
+    """
+    Prepare numerical features for HDBSCAN.
+
+    Returns:
+        scaled_features
+        scaler
+        available_features
+        feature_data
+    """
 
     available_features = [
         feature
@@ -27,20 +34,32 @@ def prepare_ml_data(
         if feature in window_df.columns
     ]
 
-    features = (
+    if not available_features:
+        raise ValueError(
+            "No ML features are available."
+        )
+
+    feature_data = (
         window_df[available_features]
-        .copy()
+        .apply(pd.to_numeric, errors="coerce")
         .fillna(0)
     )
+
+    if len(feature_data) < 2:
+        raise ValueError(
+            "At least two observations are required "
+            "for ML processing."
+        )
 
     scaler = StandardScaler()
 
     scaled_features = scaler.fit_transform(
-        features
+        feature_data
     )
 
     return (
         scaled_features,
         scaler,
         available_features,
+        feature_data,
     )

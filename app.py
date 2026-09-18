@@ -1,743 +1,1306 @@
+import io
+
+import pandas as pd
+import plotly.express as px
 import streamlit as st
 
-from src.analytics.descriptive import (
-    alarms_by_area,
-    alarms_by_field,
-    alarms_by_day,
-    alarms_by_priority,
-    alarms_by_state,
-)
-from src.analytics.metrics import (
-    calculate_basic_metrics,
-)
-from src.data.load_data import load_alarm_data
-from src.features.alarm_features import (
-    add_alarm_features,
+from src.data.load_data import (
+    load_alarm_data,
+    create_data_quality_report,
 )
 from src.features.temporal_features import (
     add_temporal_features,
 )
+from src.features.alarm_features import (
+    add_alarm_features,
+)
 from src.features.window_features import (
     create_alarm_windows,
 )
-from src.ml.evaluation import (
-    evaluate_clusters,
+from src.analytics.descriptive import (
+    alarms_by_area,
+    alarms_by_field,
+    alarms_by_priority,
+    alarms_by_state,
+    alarms_by_day,
+)
+from src.analytics.metrics import (
+    calculate_basic_metrics,
+)
+from src.ml.preprocessing import (
+    prepare_ml_data,
 )
 from src.ml.hdbscan_model import (
     run_hdbscan,
     add_cluster_results,
 )
-from src.ml.preprocessing import (
-    prepare_ml_data,
+from src.ml.evaluation import (
+    evaluate_clusters,
 )
 from src.ml.visualization import (
     create_pca_projection,
 )
-from src.ui.charts import (
-    area_chart,
-    field_chart,
-    alarm_trend_chart,
-    priority_chart,
-    state_chart,
-    cluster_chart,
-)
 from src.ui.filters import (
-    multiselect_filter,
+    get_filter_options,
     apply_filters,
 )
 
-# ---------------------------------------------------------
+# ============================================================
 # PAGE CONFIGURATION
-# ---------------------------------------------------------
+# ============================================================
 
 st.set_page_config(
     page_title="Industrial Alarm Analytics",
-    page_icon="📊",
+    page_icon="",
     layout="wide",
 )
 
 
-# ---------------------------------------------------------
+# ============================================================
 # DATA LOADING
-# ---------------------------------------------------------
+# ============================================================
 
 @st.cache_data
-def get_data():
-
+def get_alarm_data():
     df = load_alarm_data()
-
     df = add_temporal_features(df)
-
     df = add_alarm_features(df)
-
     return df
 
 
-# ---------------------------------------------------------
-# MAIN APPLICATION
-# ---------------------------------------------------------
+try:
+    df = get_alarm_data()
 
-def main():
+except Exception as exc:
+    st.error(
+        "The alarm dataset could not be loaded."
+    )
+    st.exception(exc)
+    st.stop()
+
+# ============================================================
+# DATA QUALITY
+# ============================================================
+
+quality_report = create_data_quality_report(
+    df
+)
+
+# ============================================================
+# SIDEBAR
+# ============================================================
+
+st.sidebar.title(
+    "Alarm Analytics"
+)
+
+st.sidebar.caption(
+    "Interactive industrial alarm analysis"
+)
+
+# ------------------------------------------------------------
+# Date filter
+# ------------------------------------------------------------
+
+min_date = df["Date"].min()
+max_date = df["Date"].max()
+
+date_range = st.sidebar.date_input(
+    "Date Range",
+    value=(min_date, max_date),
+    min_value=min_date,
+    max_value=max_date,
+)
+
+# ------------------------------------------------------------
+# Cascading Area → Field → Asset → Tag
+# ------------------------------------------------------------
+
+area_options = sorted(
+    df["Area"]
+    .dropna()
+    .unique()
+    .tolist()
+)
+
+selected_areas = st.sidebar.multiselect(
+    "Area",
+    area_options,
+    key="area_filter",
+)
+
+# Field options based on Area
+
+field_source = df
+
+if selected_areas:
+    field_source = field_source[
+        field_source["Area"].isin(
+            selected_areas
+        )
+    ]
+
+field_options = sorted(
+    field_source["Field"]
+    .dropna()
+    .unique()
+    .tolist()
+)
+
+selected_fields = st.sidebar.multiselect(
+    "Field",
+    field_options,
+    key="field_filter",
+)
+
+# Asset options based on Area + Field
+
+asset_source = field_source
+
+if selected_fields:
+    asset_source = asset_source[
+        asset_source["Field"].isin(
+            selected_fields
+        )
+    ]
+
+if "Asset" in df.columns:
+
+    asset_options = sorted(
+        asset_source["Asset"]
+        .dropna()
+        .unique()
+        .tolist()
+    )
+
+else:
+    asset_options = []
+
+selected_assets = st.sidebar.multiselect(
+    "Asset",
+    asset_options,
+    key="asset_filter",
+)
+
+# Tag options based on Area + Field + Asset
+
+tag_source = asset_source
+
+if selected_assets and "Asset" in df.columns:
+    tag_source = tag_source[
+        tag_source["Asset"].isin(
+            selected_assets
+        )
+    ]
+
+tag_options = sorted(
+    tag_source["Tag"]
+    .dropna()
+    .unique()
+    .tolist()
+)
+
+selected_tags = st.sidebar.multiselect(
+    "Tag",
+    tag_options,
+    key="tag_filter",
+)
+
+# ------------------------------------------------------------
+# Other filters
+# ------------------------------------------------------------
+
+priority_options = sorted(
+    df["Priority"]
+    .dropna()
+    .unique()
+    .tolist()
+)
+
+selected_priorities = st.sidebar.multiselect(
+    "Priority",
+    priority_options,
+    key="priority_filter",
+)
+
+state_options = sorted(
+    df["Alarm State"]
+    .dropna()
+    .unique()
+    .tolist()
+)
+
+selected_states = st.sidebar.multiselect(
+    "Alarm State",
+    state_options,
+    key="state_filter",
+)
+
+type_options = sorted(
+    df["Type"]
+    .dropna()
+    .unique()
+    .tolist()
+)
+
+selected_types = st.sidebar.multiselect(
+    "Type",
+    type_options,
+    key="type_filter",
+)
+
+quality_options = sorted(
+    df["Quality"]
+    .dropna()
+    .unique()
+    .tolist()
+)
+
+selected_qualities = st.sidebar.multiselect(
+    "Quality",
+    quality_options,
+    key="quality_filter",
+)
+
+# ============================================================
+# APPLY FILTERS
+# ============================================================
+
+filtered_df = apply_filters(
+    df=df,
+    date_range=date_range,
+    areas=selected_areas,
+    fields=selected_fields,
+    assets=selected_assets,
+    tags=selected_tags,
+    priorities=selected_priorities,
+    states=selected_states,
+    alarm_types=selected_types,
+    qualities=selected_qualities,
+)
+
+# ============================================================
+# NAVIGATION
+# ============================================================
+
+page = st.sidebar.radio(
+    "Page",
+    [
+        "Overview",
+        "Alarm Explorer",
+        "Machine Learning",
+        "Data Quality",
+        "Methodology",
+    ],
+)
+
+# ============================================================
+# OVERVIEW
+# ============================================================
+
+if page == "Overview":
 
     st.title(
         "Industrial Alarm Analytics"
     )
 
-    st.caption(
-        "Descriptive analytics and density-based "
-        "machine learning for historical industrial "
-        "alarm activity."
+    st.write(
+        "Interactive analysis of historical industrial "
+        "alarm activity using descriptive analytics and "
+        "HDBSCAN-based pattern discovery."
     )
 
-    try:
+    metrics = calculate_basic_metrics(
+        filtered_df
+    )
 
-        df = get_data()
+    # --------------------------------------------------------
+    # KPIs
+    # --------------------------------------------------------
 
-    except Exception as error:
+    col1, col2, col3, col4, col5 = st.columns(5)
 
-        st.error(
-            f"Unable to load alarm data: {error}"
+    col1.metric(
+        "Alarm Events",
+        f"{metrics['total_events']:,}",
+    )
+
+    col2.metric(
+        "Areas",
+        f"{metrics['unique_areas']:,}",
+    )
+
+    col3.metric(
+        "Fields",
+        f"{metrics['unique_fields']:,}",
+    )
+
+    col4.metric(
+        "Assets",
+        f"{metrics['unique_assets']:,}",
+    )
+
+    col5.metric(
+        "Tags",
+        f"{metrics['unique_tags']:,}",
+    )
+
+    st.divider()
+
+    # --------------------------------------------------------
+    # Alarm trend
+    # --------------------------------------------------------
+
+    daily = alarms_by_day(
+        filtered_df
+    )
+
+    if not daily.empty:
+        fig = px.line(
+            daily,
+            x="Date",
+            y="Alarm Count",
+            title="Alarm Activity Over Time",
         )
 
-        st.stop()
-
-
-    # -----------------------------------------------------
-    # SIDEBAR
-    # -----------------------------------------------------
-
-    st.sidebar.header(
-        "Analysis Filters"
-    )
-
-    min_date = df["Date"].min()
-    max_date = df["Date"].max()
-
-    date_range = st.sidebar.date_input(
-        "Date Range",
-        value=(
-            min_date,
-            max_date,
-        ),
-        min_value=min_date,
-        max_value=max_date,
-    )
-
-    areas = multiselect_filter(
-        "Area",
-        df["Area"].unique(),
-        "area_filter",
-    )
-
-    filtered_for_fields = df.copy()
-
-    if areas:
-        filtered_for_fields = (
-            filtered_for_fields[
-                filtered_for_fields["Area"].isin(
-                    areas
-                )
-            ]
+        fig.update_layout(
+            xaxis_title="Date",
+            yaxis_title="Alarm Count",
         )
 
-    fields = multiselect_filter(
-        "Field",
-        filtered_for_fields["Field"].unique(),
-        "field_filter",
-    )
-
-    filtered_for_assets = (
-        filtered_for_fields.copy()
-    )
-
-    if fields:
-        filtered_for_assets = (
-            filtered_for_assets[
-                filtered_for_assets["Field"].isin(
-                    fields
-                )
-            ]
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
         )
 
-    assets = []
+    # --------------------------------------------------------
+    # Area and Field
+    # --------------------------------------------------------
 
-    if "Asset" in df.columns:
+    col1, col2 = st.columns(2)
 
-        assets = multiselect_filter(
-            "Asset",
-            filtered_for_assets["Asset"].unique(),
-            "asset_filter",
-        )
+    with col1:
 
-    tags = multiselect_filter(
-        "Alarm Tag",
-        filtered_for_assets["Tag"].unique(),
-        "tag_filter",
-    )
-
-    priorities = st.sidebar.multiselect(
-        "Priority",
-        sorted(
-            df["Priority"]
-            .dropna()
-            .unique()
-        ),
-    )
-
-    states = st.sidebar.multiselect(
-        "Alarm State",
-        sorted(
-            df["Alarm State"]
-            .dropna()
-            .unique()
-        ),
-    )
-
-
-    # -----------------------------------------------------
-    # APPLY FILTERS
-    # -----------------------------------------------------
-
-    filtered_df = apply_filters(
-        df=df,
-        date_range=date_range,
-        areas=areas,
-        fields=fields,
-        assets=assets,
-        tags=tags,
-        priorities=priorities,
-        states=states,
-    )
-
-
-    # -----------------------------------------------------
-    # NAVIGATION
-    # -----------------------------------------------------
-
-    page = st.sidebar.radio(
-        "Application",
-        [
-            "Overview",
-            "Alarm Explorer",
-            "Machine Learning",
-            "Methodology",
-        ],
-    )
-
-
-    # -----------------------------------------------------
-    # OVERVIEW
-    # -----------------------------------------------------
-
-    if page == "Overview":
-
-        st.header(
-            "Alarm System Overview"
-        )
-
-        metrics = calculate_basic_metrics(
+        area_data = alarms_by_area(
             filtered_df
+        )
+
+        if not area_data.empty:
+            fig = px.bar(
+                area_data,
+                x="Area",
+                y="Alarm Count",
+                title="Alarm Activity by Area",
+            )
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True,
+            )
+
+    with col2:
+
+        field_data = alarms_by_field(
+            filtered_df
+        )
+
+        if not field_data.empty:
+            fig = px.bar(
+                field_data,
+                x="Field",
+                y="Alarm Count",
+                color="Area",
+                title="Alarm Activity by Field",
+            )
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True,
+            )
+
+    # --------------------------------------------------------
+    # Priority and State
+    # --------------------------------------------------------
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        priority_data = alarms_by_priority(
+            filtered_df
+        )
+
+        if not priority_data.empty:
+            fig = px.bar(
+                priority_data,
+                x="Priority",
+                y="Alarm Count",
+                title="Alarm Activity by Priority",
+            )
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True,
+            )
+
+    with col2:
+
+        state_data = alarms_by_state(
+            filtered_df
+        )
+
+        if not state_data.empty:
+            fig = px.bar(
+                state_data,
+                x="Alarm State",
+                y="Alarm Count",
+                title="Alarm Activity by Alarm State",
+            )
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True,
+            )
+
+
+# ============================================================
+# ALARM EXPLORER
+# ============================================================
+
+elif page == "Alarm Explorer":
+
+    st.title(
+        "Alarm Explorer"
+    )
+
+    st.write(
+        "Use the filters to investigate individual alarm "
+        "events across the Area → Field → Asset → Tag hierarchy."
+    )
+
+    st.metric(
+        "Filtered Events",
+        f"{len(filtered_df):,}",
+    )
+
+    # --------------------------------------------------------
+    # Download filtered dataset
+    # --------------------------------------------------------
+
+    csv_data = filtered_df.to_csv(
+        index=False
+    ).encode("utf-8")
+
+    st.download_button(
+        label="Download Filtered Results",
+        data=csv_data,
+        file_name="filtered_alarm_results.csv",
+        mime="text/csv",
+    )
+
+    st.divider()
+
+    # --------------------------------------------------------
+    # Display data
+    # --------------------------------------------------------
+
+    display_columns = [
+        "Time / Date",
+        "Tag",
+        "Priority",
+        "Type",
+        "Quality",
+        "Alarm State",
+        "Area",
+        "Field",
+    ]
+
+    if "Asset" in filtered_df.columns:
+        display_columns.insert(
+            7,
+            "Asset",
+        )
+
+    display_columns = [
+        column
+        for column in display_columns
+        if column in filtered_df.columns
+    ]
+
+    st.dataframe(
+        filtered_df[display_columns],
+        use_container_width=True,
+        hide_index=True,
+    )
+
+
+# ============================================================
+# MACHINE LEARNING
+# ============================================================
+
+elif page == "Machine Learning":
+
+    st.title(
+        "HDBSCAN Pattern Discovery"
+    )
+
+    st.write(
+        "HDBSCAN analyzes fixed time-window observations "
+        "to identify recurring alarm-activity patterns and "
+        "observations that do not fit the learned density structure."
+    )
+
+    st.info(
+        "HDBSCAN noise observations are statistically unusual "
+        "relative to the modeled data. They are candidates for "
+        "engineering investigation and do not automatically "
+        "represent equipment faults or process failures."
+    )
+
+    # --------------------------------------------------------
+    # Controls
+    # --------------------------------------------------------
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        window_label = st.selectbox(
+            "Time Window",
+            [
+                "5 minutes",
+                "10 minutes",
+                "15 minutes",
+                "30 minutes",
+            ],
+        )
+
+    window_map = {
+        "5 minutes": "5min",
+        "10 minutes": "10min",
+        "15 minutes": "15min",
+        "30 minutes": "30min",
+    }
+
+    selected_window = window_map[
+        window_label
+    ]
+
+    with col2:
+
+        min_cluster_size = st.slider(
+            "Minimum Cluster Size",
+            min_value=2,
+            max_value=100,
+            value=10,
+            step=1,
+        )
+
+    # --------------------------------------------------------
+    # Run button
+    # --------------------------------------------------------
+
+    run_model = st.button(
+        "Run HDBSCAN",
+        type="primary",
+    )
+
+    if run_model:
+
+        if filtered_df.empty:
+            st.warning(
+                "No alarm events match the current filters."
+            )
+            st.stop()
+
+        with st.spinner(
+                "Creating alarm windows and running HDBSCAN..."
+        ):
+
+            window_df = create_alarm_windows(
+                filtered_df,
+                window=selected_window,
+            )
+
+            if len(window_df) < min_cluster_size:
+                st.warning(
+                    "There are not enough Area/Field windows "
+                    "to run HDBSCAN with the selected minimum "
+                    "cluster size."
+                )
+                st.stop()
+
+            (
+                scaled_features,
+                scaler,
+                feature_names,
+                feature_data,
+            ) = prepare_ml_data(window_df)
+
+            clusterer = run_hdbscan(
+                scaled_features,
+                min_cluster_size=min_cluster_size,
+            )
+
+            cluster_df = add_cluster_results(
+                window_df,
+                clusterer,
+            )
+
+            evaluation = evaluate_clusters(
+                scaled_features,
+                cluster_df["Cluster"].values,
+            )
+
+            projection_df = create_pca_projection(
+                scaled_features,
+                cluster_df,
+            )
+
+            st.session_state[
+                "cluster_df"
+            ] = cluster_df
+
+            st.session_state[
+                "projection_df"
+            ] = projection_df
+
+            st.session_state[
+                "evaluation"
+            ] = evaluation
+
+            st.session_state[
+                "feature_names"
+            ] = feature_names
+
+            st.session_state[
+                "selected_window"
+            ] = selected_window
+
+    # --------------------------------------------------------
+    # Results
+    # --------------------------------------------------------
+
+    if "cluster_df" in st.session_state:
+
+        cluster_df = st.session_state[
+            "cluster_df"
+        ]
+
+        projection_df = st.session_state[
+            "projection_df"
+        ]
+
+        evaluation = st.session_state[
+            "evaluation"
+        ]
+
+        feature_names = st.session_state[
+            "feature_names"
+        ]
+
+        st.subheader(
+            "Model Results"
         )
 
         col1, col2, col3, col4 = st.columns(4)
 
         col1.metric(
-            "Alarm Events",
-            f"{metrics['total_events']:,}",
+            "Clusters",
+            evaluation["cluster_count"],
         )
 
         col2.metric(
-            "Unique Tags",
-            f"{metrics['unique_tags']:,}",
+            "Noise Observations",
+            evaluation["noise_count"],
         )
 
         col3.metric(
-            "Areas",
-            f"{metrics['unique_areas']:,}",
+            "Noise %",
+            f"{evaluation['noise_percentage']:.1f}%",
         )
 
-        col4.metric(
-            "Fields",
-            f"{metrics['unique_fields']:,}",
+        if evaluation[
+            "silhouette_score"
+        ] is not None:
+
+            col4.metric(
+                "Silhouette",
+                f"{evaluation['silhouette_score']:.3f}",
+            )
+
+        else:
+
+            col4.metric(
+                "Silhouette",
+                "N/A",
+            )
+
+        # ----------------------------------------------------
+        # Evaluation
+        # ----------------------------------------------------
+
+        st.subheader(
+            "Evaluation"
         )
 
-        st.divider()
+        evaluation_col1, evaluation_col2 = (
+            st.columns(2)
+        )
 
-        col1, col2 = st.columns(2)
+        with evaluation_col1:
 
-        with col1:
+            if evaluation[
+                "silhouette_score"
+            ] is not None:
 
-            area_data = alarms_by_area(
-                filtered_df
-            )
+                st.write(
+                    "**Silhouette Score:** "
+                    f"{evaluation['silhouette_score']:.3f}"
+                )
 
-            st.plotly_chart(
-                area_chart(area_data),
-                use_container_width=True,
-            )
+            else:
 
-        with col2:
+                st.write(
+                    "**Silhouette Score:** N/A"
+                )
 
-            state_data = alarms_by_state(
-                filtered_df
-            )
+        with evaluation_col2:
 
-            st.plotly_chart(
-                state_chart(state_data),
-                use_container_width=True,
-            )
+            if evaluation[
+                "davies_bouldin_score"
+            ] is not None:
 
-        trend_data = alarms_by_day(
-            filtered_df
+                st.write(
+                    "**Davies-Bouldin Score:** "
+                    f"{evaluation['davies_bouldin_score']:.3f}"
+                )
+
+            else:
+
+                st.write(
+                    "**Davies-Bouldin Score:** N/A"
+                )
+
+        st.caption(
+            "Silhouette and Davies-Bouldin scores are calculated "
+            "using non-noise observations."
+        )
+
+        # ----------------------------------------------------
+        # PCA visualization
+        # ----------------------------------------------------
+
+        st.subheader(
+            "Cluster Visualization"
+        )
+
+        fig = px.scatter(
+            projection_df,
+            x="PCA1",
+            y="PCA2",
+            color="Cluster",
+            hover_data=[
+                "Window",
+                "Area",
+                "Field",
+                "AlarmCount",
+                "UniqueTags",
+                "ActiveCount",
+                "AckedCount",
+                "NormalCount",
+            ],
+            title=(
+                "HDBSCAN Alarm Activity Clusters "
+                "(PCA Projection)"
+            ),
         )
 
         st.plotly_chart(
-            alarm_trend_chart(trend_data),
+            fig,
             use_container_width=True,
         )
 
-        col1, col2 = st.columns(2)
+        st.caption(
+            "PCA is used only to visualize the feature space. "
+            "HDBSCAN is run on the standardized feature set."
+        )
 
-        with col1:
+        # ----------------------------------------------------
+        # Feature information
+        # ----------------------------------------------------
 
-            field_data = alarms_by_field(
-                filtered_df
+        with st.expander(
+                "ML Features"
+        ):
+
+            st.write(
+                "Features used by HDBSCAN:"
             )
 
-            st.plotly_chart(
-                field_chart(field_data),
-                use_container_width=True,
+            for feature in feature_names:
+                st.write(
+                    f"- {feature}"
+                )
+
+        # ----------------------------------------------------
+        # Cluster summary
+        # ----------------------------------------------------
+
+        st.subheader(
+            "Cluster Summary"
+        )
+
+        cluster_summary = (
+            cluster_df
+            .groupby("Cluster")
+            .agg(
+                Observations=("Cluster", "size"),
+                AverageAlarmCount=(
+                    "AlarmCount",
+                    "mean",
+                ),
+                AverageUniqueTags=(
+                    "UniqueTags",
+                    "mean",
+                ),
+                AveragePriority=(
+                    "AveragePriority",
+                    "mean",
+                ),
             )
+            .reset_index()
+        )
 
-        with col2:
+        cluster_summary = (
+            cluster_summary
+            .sort_values("Cluster")
+        )
 
-            priority_data = alarms_by_priority(
-                filtered_df
-            )
+        st.dataframe(
+            cluster_summary,
+            use_container_width=True,
+            hide_index=True,
+        )
 
-            st.plotly_chart(
-                priority_chart(priority_data),
-                use_container_width=True,
-            )
+        # ----------------------------------------------------
+        # Inspect cluster
+        # ----------------------------------------------------
 
+        st.subheader(
+            "Inspect Cluster"
+        )
 
-    # -----------------------------------------------------
-    # ALARM EXPLORER
-    # -----------------------------------------------------
+        available_clusters = sorted(
+            cluster_df["Cluster"]
+            .unique()
+            .tolist()
+        )
 
-    elif page == "Alarm Explorer":
+        selected_cluster = st.selectbox(
+            "Select Cluster",
+            available_clusters,
+        )
 
-        st.header(
-            "Alarm Explorer"
+        selected_cluster_df = (
+            cluster_df[
+                cluster_df["Cluster"]
+                == selected_cluster
+                ]
+            .sort_values("Window")
         )
 
         st.write(
-            "Explore individual alarm events using "
-            "the hierarchy Area → Field → Asset → Tag."
+            f"Observations in selected cluster: "
+            f"{len(selected_cluster_df):,}"
         )
 
-        st.metric(
-            "Filtered Alarm Events",
-            f"{len(filtered_df):,}",
+        st.dataframe(
+            selected_cluster_df,
+            use_container_width=True,
+            hide_index=True,
         )
 
-        display_columns = [
-            column
-            for column in [
+
+# ============================================================
+# DATA QUALITY
+# ============================================================
+
+elif page == "Data Quality":
+
+    st.title(
+        "Data Quality"
+    )
+
+    st.write(
+        "Validation and quality indicators for the dataset "
+        "used by the application."
+    )
+
+    # --------------------------------------------------------
+    # Primary metrics
+    # --------------------------------------------------------
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    col1.metric(
+        "Records",
+        f"{quality_report['total_records']:,}",
+    )
+
+    col2.metric(
+        "Valid Timestamps",
+        f"{quality_report['valid_timestamps']:,}",
+    )
+
+    col3.metric(
+        "Invalid Timestamps",
+        f"{quality_report['invalid_timestamps']:,}",
+    )
+
+    col4.metric(
+        "Invalid Priorities",
+        f"{quality_report['invalid_priorities']:,}",
+    )
+
+    st.divider()
+
+    # --------------------------------------------------------
+    # Date range
+    # --------------------------------------------------------
+
+    st.subheader(
+        "Dataset Coverage"
+    )
+
+    start_date = quality_report[
+        "date_range_start"
+    ]
+
+    end_date = quality_report[
+        "date_range_end"
+    ]
+
+    if start_date is not None:
+        st.write(
+            f"**Date Range:** "
+            f"{start_date:%Y-%m-%d %H:%M:%S} "
+            f"through "
+            f"{end_date:%Y-%m-%d %H:%M:%S}"
+        )
+
+    st.write(
+        f"**Areas:** "
+        f"{quality_report['unique_areas']:,}"
+    )
+
+    st.write(
+        f"**Fields:** "
+        f"{quality_report['unique_fields']:,}"
+    )
+
+    st.write(
+        f"**Assets:** "
+        f"{quality_report['unique_assets']:,}"
+    )
+
+    st.write(
+        f"**Tags:** "
+        f"{quality_report['unique_tags']:,}"
+    )
+
+    # --------------------------------------------------------
+    # Missing values
+    # --------------------------------------------------------
+
+    st.subheader(
+        "Missing Values"
+    )
+
+    missing_df = pd.DataFrame(
+        [
+            {
+                "Column": column,
+                "Missing Values": count,
+            }
+            for column, count
+            in quality_report[
+            "missing_values"
+        ].items()
+        ]
+    )
+
+    st.dataframe(
+        missing_df,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    # --------------------------------------------------------
+    # Alarm states
+    # --------------------------------------------------------
+
+    st.subheader(
+        "Alarm State Validation"
+    )
+
+    observed_states = quality_report[
+        "observed_alarm_states"
+    ]
+
+    unexpected_states = quality_report[
+        "unexpected_alarm_states"
+    ]
+
+    st.write(
+        "**Observed States:** "
+        + ", ".join(observed_states)
+        if observed_states
+        else "**Observed States:** None"
+    )
+
+    if unexpected_states:
+
+        st.warning(
+            "Unexpected alarm states detected: "
+            + ", ".join(unexpected_states)
+        )
+
+    else:
+
+        st.success(
+            "No unexpected alarm states were detected."
+        )
+
+    # --------------------------------------------------------
+    # Required columns
+    # --------------------------------------------------------
+
+    st.subheader(
+        "Required Columns"
+    )
+
+    required_columns_status = pd.DataFrame(
+        {
+            "Column": [
                 "Time / Date",
-                "Area",
-                "Field",
-                "Asset",
                 "Tag",
                 "Priority",
                 "Type",
                 "Quality",
                 "Alarm State",
-            ]
-            if column in filtered_df.columns
-        ]
-
-        st.dataframe(
-            filtered_df[
-                display_columns
-            ].sort_values(
-                "Time / Date",
-                ascending=False,
-            ),
-            use_container_width=True,
-            height=500,
-        )
-
-
-    # -----------------------------------------------------
-    # MACHINE LEARNING
-    # -----------------------------------------------------
-
-    elif page == "Machine Learning":
-
-        st.header(
-            "Machine Learning"
-        )
-
-        st.write(
-            """
-            HDBSCAN is applied to 5-minute Area/Field
-            alarm activity windows. The algorithm identifies
-            dense patterns in the feature space without
-            requiring a predefined number of clusters.
-            """
-        )
-
-        st.info(
-            "A cluster represents a recurring pattern of "
-            "alarm activity. A noise point (-1) represents "
-            "an observation that does not fit a learned "
-            "density pattern. Noise is not automatically "
-            "evidence of an equipment fault."
-        )
-
-        # ---------------------------------------------
-        # MODEL PARAMETERS
-        # ---------------------------------------------
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-
-            window_size = st.selectbox(
-                "Time Window",
-                [
-                    "5min",
-                    "10min",
-                    "15min",
-                    "30min",
-                ],
-                index=0,
-            )
-
-        with col2:
-
-            min_cluster_size = st.slider(
-                "Minimum Cluster Size",
-                min_value=3,
-                max_value=50,
-                value=10,
-            )
-
-        if st.button(
-            "Run HDBSCAN Analysis",
-            type="primary",
-        ):
-
-            with st.spinner(
-                "Running machine learning analysis..."
-            ):
-
-                window_df = create_alarm_windows(
-                    filtered_df,
-                    window=window_size,
-                )
-
-                if len(window_df) < min_cluster_size:
-
-                    st.warning(
-                        "There are not enough Area/Field "
-                        "windows for the selected minimum "
-                        "cluster size."
-                    )
-
-                    st.stop()
-
-                (
-                    scaled_features,
-                    scaler,
-                    feature_names,
-                ) = prepare_ml_data(
-                    window_df
-                )
-
-                clusterer = run_hdbscan(
-                    scaled_features,
-                    min_cluster_size=min_cluster_size,
-                )
-
-                cluster_df = add_cluster_results(
-                    window_df,
-                    clusterer,
-                )
-
-                evaluation = evaluate_clusters(
-                    scaled_features,
-                    cluster_df["Cluster"].values,
-                )
-
-                projection_df = (
-                    create_pca_projection(
-                        scaled_features,
-                        cluster_df,
-                    )
-                )
-
-                st.session_state[
-                    "cluster_df"
-                ] = cluster_df
-
-                st.session_state[
-                    "projection_df"
-                ] = projection_df
-
-                st.session_state[
-                    "evaluation"
-                ] = evaluation
-
-                st.session_state[
-                    "feature_names"
-                ] = feature_names
-
-
-        # ---------------------------------------------
-        # DISPLAY MODEL RESULTS
-        # ---------------------------------------------
-
-        if "evaluation" in st.session_state:
-
-            evaluation = (
-                st.session_state[
-                    "evaluation"
+                "Area",
+                "Field",
+            ],
+            "Present": [
+                column in df.columns
+                for column in [
+                    "Time / Date",
+                    "Tag",
+                    "Priority",
+                    "Type",
+                    "Quality",
+                    "Alarm State",
+                    "Area",
+                    "Field",
                 ]
-            )
+            ],
+        }
+    )
 
-            cluster_df = (
-                st.session_state[
-                    "cluster_df"
-                ]
-            )
-
-            projection_df = (
-                st.session_state[
-                    "projection_df"
-                ]
-            )
-
-            st.divider()
-
-            col1, col2, col3, col4 = st.columns(4)
-
-            col1.metric(
-                "Clusters",
-                evaluation[
-                    "cluster_count"
-                ],
-            )
-
-            col2.metric(
-                "Noise Windows",
-                evaluation[
-                    "noise_count"
-                ],
-            )
-
-            col3.metric(
-                "Noise %",
-                f"{evaluation['noise_percentage']:.1f}%",
-            )
-
-            if (
-                evaluation[
-                    "silhouette_score"
-                ]
-                is not None
-            ):
-
-                col4.metric(
-                    "Silhouette Score",
-                    f"{evaluation['silhouette_score']:.3f}",
-                )
-
-            else:
-
-                col4.metric(
-                    "Silhouette Score",
-                    "N/A",
-                )
-
-            st.plotly_chart(
-                cluster_chart(
-                    projection_df
-                ),
-                use_container_width=True,
-            )
-
-            st.subheader(
-                "Cluster Summary"
-            )
-
-            cluster_summary = (
-                cluster_df
-                .groupby("Cluster")
-                .agg(
-                    Windows=("Cluster", "size"),
-                    AverageAlarms=(
-                        "AlarmCount",
-                        "mean",
-                    ),
-                    AverageTags=(
-                        "UniqueTags",
-                        "mean",
-                    ),
-                    AverageActive=(
-                        "ActiveCount",
-                        "mean",
-                    ),
-                )
-                .reset_index()
-            )
-
-            st.dataframe(
-                cluster_summary,
-                use_container_width=True,
-            )
-
-            st.subheader(
-                "Explore Cluster"
-            )
-
-            available_clusters = sorted(
-                cluster_df["Cluster"]
-                .unique()
-            )
-
-            selected_cluster = st.selectbox(
-                "Select a cluster",
-                available_clusters,
-            )
-
-            selected_data = cluster_df[
-                cluster_df["Cluster"]
-                == selected_cluster
-            ]
-
-            st.dataframe(
-                selected_data.sort_values(
-                    "Window",
-                    ascending=False,
-                ),
-                use_container_width=True,
-                height=400,
-            )
+    st.dataframe(
+        required_columns_status,
+        use_container_width=True,
+        hide_index=True,
+    )
 
 
-    # -----------------------------------------------------
-    # METHODOLOGY
-    # -----------------------------------------------------
+# ============================================================
+# METHODOLOGY
+# ============================================================
 
-    elif page == "Methodology":
+elif page == "Methodology":
 
-        st.header(
-            "Methodology"
-        )
+    st.title(
+        "Methodology"
+    )
 
-        st.subheader(
-            "Business Problem"
-        )
+    st.subheader(
+        "Business Problem"
+    )
 
+    st.write(
+        "Industrial SCADA systems can generate large volumes "
+        "of alarm events across Areas, Fields, Assets, and "
+        "individual alarm tags. Manual examination of historical "
+        "events makes it difficult to identify recurring patterns "
+        "and unusual concentrations of alarm activity."
+    )
+
+    st.subheader(
+        "Analytical Approach"
+    )
+
+    st.write(
+        "The application combines descriptive analytics with "
+        "unsupervised machine learning."
+    )
+
+    st.markdown(
+        """
+        **Descriptive analytics**
+
+        Historical alarm events are summarized by:
+        - Area
+        - Field
+        - Asset
+        - Tag
+        - Priority
+        - Alarm State
+        - Time
+
+        **HDBSCAN**
+
+        Alarm events are aggregated into fixed time windows.
+        Each machine-learning observation represents an Area/Field
+        combination within the selected time window.
+
+        HDBSCAN identifies density-based clusters and observations
+        that do not fit the learned density structure.
+        """
+    )
+
+    st.subheader(
+        "ML Observation"
+    )
+
+    st.write(
+        "Each HDBSCAN observation represents one Area + Field "
+        "combination within a selected time window."
+    )
+
+    st.code(
+        """
+Alarm Events
+     ↓
+Time-window aggregation
+     ↓
+Area + Field observations
+     ↓
+Feature engineering
+     ↓
+StandardScaler
+     ↓
+HDBSCAN
+     ↓
+Clusters + noise observations
+     ↓
+Interactive investigation
+        """
+    )
+
+    st.subheader(
+        "Features"
+    )
+
+    st.write(
+        "The current model can use the following features:"
+    )
+
+    features = [
+        "AlarmCount",
+        "UniqueTags",
+        "AveragePriority",
+        "MaximumPriority",
+        "ActiveCount",
+        "AckedCount",
+        "NormalCount",
+        "HighPriorityCount",
+        "AlarmRatePerMinute",
+    ]
+
+    for feature in features:
         st.write(
-            """
-            Industrial SCADA systems can generate large
-            volumes of alarm events across Areas, Fields,
-            Assets, and individual alarm points. Manual
-            analysis of historical alarm activity can make
-            it difficult to identify recurring patterns,
-            concentrations, and unusual activity.
-            """
+            f"- {feature}"
         )
 
-        st.subheader(
-            "Descriptive Analytics"
-        )
+    st.subheader(
+        "Alarm State Interpretation"
+    )
 
-        st.write(
-            """
-            Descriptive analytics summarizes what occurred
-            in the historical alarm data. The application
-            examines alarm frequency, priority, alarm state,
-            time-based activity, Areas, Fields, Assets, and
-            individual alarm Tags.
-            """
-        )
+    st.write(
+        "`Active` represents a recorded active alarm state. "
+        "`Acked` represents a SCADA-recorded acknowledged state. "
+        "`Normal` represents a recorded normal state."
+    )
 
-        st.subheader(
-            "Machine Learning"
-        )
+    st.write(
+        "A Normal record does not independently establish whether "
+        "the alarm had previously been acknowledged or whether an "
+        "operator physically intervened."
+    )
 
-        st.write(
-            """
-            HDBSCAN is used as the non-descriptive machine
-            learning method. Alarm events are aggregated
-            into fixed time windows for each Area and Field.
-            Numerical activity features are standardized
-            before clustering.
-            """
-        )
+    st.subheader(
+        "HDBSCAN Noise"
+    )
 
-        st.subheader(
-            "Hierarchy"
-        )
+    st.write(
+        "HDBSCAN assigns a cluster label of -1 to observations "
+        "classified as noise. These observations do not fit the "
+        "learned density structure under the selected parameters."
+    )
 
-        st.code(
-            """
-Area
-  ↓
-Field
-  ↓
-Asset
-  ↓
-Alarm Tag
-            """
-        )
+    st.write(
+        "Noise observations are candidates for engineering "
+        "investigation and should not automatically be interpreted "
+        "as equipment failures, process abnormalities, or operator error."
+    )
 
-        st.subheader(
-            "Alarm State Interpretation"
-        )
+    st.subheader(
+        "PCA Visualization"
+    )
 
-        st.write(
-            """
-            Active indicates that the alarm bit is active.
-            Acked represents an acknowledgment recorded by
-            SCADA. Normal indicates that the alarm condition
-            returned to normal. A Normal record does not by
-            itself establish whether an operator previously
-            acknowledged or acted on the alarm.
-            """
-        )
+    st.write(
+        "Principal Component Analysis (PCA) is used to project "
+        "the standardized feature space into two dimensions for "
+        "visualization. HDBSCAN itself is performed on the "
+        "standardized feature set rather than the PCA projection."
+    )
 
-        st.subheader(
-            "HDBSCAN Noise"
-        )
+    st.subheader(
+        "ISA-18.2 Positioning"
+    )
 
-        st.write(
-            """
-            HDBSCAN labels observations that do not belong
-            to a sufficiently dense cluster as noise (-1).
-            In this application, noise represents unusual
-            alarm-activity patterns relative to the learned
-            dataset. It should not be interpreted directly
-            as an equipment failure or process abnormality.
-            """)
+    st.write(
+        "The application is intended to support monitoring and "
+        "assessment of industrial alarm activity in an "
+        "ISA-18.2-oriented context. It should not be represented "
+        "as an ISA-18.2 compliance certification tool."
+    )
 
-        st.subheader(
-            "ISA-18.2 Positioning"
-        )
+    st.subheader(
+        "Data Security"
+    )
 
-        st.write(
-            """
-            The application is designed to support
-            ISA-18.2-oriented monitoring and assessment of
-            historical alarm activity. It does not claim
-            that the underlying alarm system is ISA-18.2
-            compliant.
-            """)
+    st.write(
+        "The dataset used by this application has been sanitized "
+        "and anonymized for educational use. Original facility, "
+        "asset, and tag identifiers are not exposed in the public "
+        "application. Proprietary source data is excluded from "
+        "the public repository. Credentials and application "
+        "secrets are not stored in source code."
+    )
 
+    st.subheader(
+        "Limitations"
+    )
 
-if __name__ == "__main__":
-    main()
+    st.markdown(
+        """
+        - The dataset does not provide complete operator-response history.
+        - HDBSCAN noise does not inherently represent equipment failure.
+        - The clustering approach is unsupervised and does not use labeled fault data.
+        - Clustering results depend on feature selection and model parameters.
+        - Results should be interpreted as decision-support information rather than automated diagnosis.
+        """
+    )
