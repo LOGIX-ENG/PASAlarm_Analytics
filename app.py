@@ -138,7 +138,10 @@ def create_ml_windows(df):
 # ============================================================
 # RUN HDBSCAN
 # ============================================================
-
+"""
+How HDBSCAN Works — hdbscan 0.8.1 documentation. (n.d.). Hdbscan.Readthedocs.Io. 
+https://hdbscan.readthedocs.io/en/latest/how_hdbscan_works.html
+"""
 def run_hdbscan(window_data):
     """Run the fixed baseline HDBSCAN configuration."""
 
@@ -183,7 +186,10 @@ def run_hdbscan(window_data):
 
     return results, scaled_features
 
-
+"""
+Streamlit. (2024). Streamlit Docs. Docs.Streamlit.Io.
+https://docs.streamlit.io/
+"""
 # ============================================================
 # APPLICATION
 # ============================================================

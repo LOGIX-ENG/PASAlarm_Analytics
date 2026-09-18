@@ -401,3 +401,25 @@ This application was developed as a Computer Science Capstone project to demonst
 This project is developed for academic purposes.
 
 The dataset and application should not be used to make operational decisions involving industrial equipment without appropriate engineering review and validation.
+
+---
+## References
+How HDBSCAN Works — hdbscan 0.8.1 documentation. (n.d.). 
+Hdbscan.Readthedocs.Io. 
+https://hdbscan.readthedocs.io/en/latest/how_hdbscan_works.html
+
+GeeksforGeeks. (2024, March 15). 
+Hierarchical DensityBased Spatial Clustering of Applications with Noise 
+(HDBSCAN). GeeksforGeeks. 
+https://www.geeksforgeeks.org/machine-learning/hdbscan/
+
+Python. (2020). The Python Standard Library — Python 3.8.1 documentation. 
+Python.Org. https://docs.python.org/3/library/index.html
+
+Streamlit. (2024). 
+Streamlit Docs. Docs.Streamlit.Io. https://docs.streamlit.io/
+
+ANSI/ISA-18.2-2016, 
+Management of Alarm Systems for the Process Industries. (n.d.). 
+Isa.Org.
+https://www.isa.org/products/ansi-isa-18-2-2016-management-of-alarm-systems-for
