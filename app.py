@@ -1,22 +1,27 @@
+# *********************************************************************
+# Imports
+# *********************************************************************
 from pathlib import Path
-
 import streamlit as st
 import pandas as pd
 import numpy as np
 import hdbscan
-
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.metrics import silhouette_score, davies_bouldin_score
 
-
+# *********************************************************************
+# Initial Page Setup
+# *********************************************************************
 st.set_page_config(
     page_title="Industrial Alarm Analytics",
     page_icon="",
     layout="wide",
 )
 
-
+# *********************************************************************
+# Load Sanatized Alarm Dataset
+# *********************************************************************
 @st.cache_data
 def load_data():
     """Load and prepare the sanitized alarm dataset from CSV."""
@@ -27,7 +32,9 @@ def load_data():
     df = df.dropna(subset=["Time / Date"]).copy()
     return df.sort_values("Time / Date")
 
-
+# *********************************************************************
+# Create Alarming events. These are separated into Five/Minute Observations
+# *********************************************************************
 def create_ml_windows(df):
     """Convert alarm events into five-minute Area/Field observations."""
     data = df.copy()
@@ -62,7 +69,12 @@ FEATURE_COLUMNS = [
     "AlarmRatePerMinute",
 ]
 
-
+# *********************************************************************
+# Extract the Column Features
+# "AlarmCount", "UniqueTags", "AveragePriority", "MaximumPriority",
+# "ActiveCount", "AckedCount", "NormalCount", "HighPriorityCount",
+# "AlarmRatePerMinute",
+#*********************************************************************
 def extract_features(window_data):
     return (
         window_data[FEATURE_COLUMNS]
@@ -70,7 +82,10 @@ def extract_features(window_data):
         .fillna(0)
     )
 
-
+# *********************************************************************
+# Evaluation of the Cluster using the Silhouette Score and
+# the Davis Bouldin Score. These features are imported from SKLearn
+# *********************************************************************
 def evaluate_clustering(features, labels):
     labels = np.asarray(labels)
     mask = labels != -1
@@ -85,6 +100,10 @@ def evaluate_clustering(features, labels):
         "n_clusters_scored": n_clusters,
     }
 
+# *********************************************************************
+# Run the HDBSCAN clustering algorithm on the hisorical
+# Five-Minue Observations.
+# *********************************************************************
 
 def run_hdbscan(window_data):
     """Run descriptive HDBSCAN on historical five-minute observations."""
@@ -99,6 +118,11 @@ def run_hdbscan(window_data):
     results["Cluster"] = labels
     return results, scaled_features
 
+# *********************************************************************
+# All five-minute observations will be sorted chronologically.
+# The earliest approximately 80 percent will form the training set and
+# the latest approximately 20 percent will form the holdout set.
+# *********************************************************************
 
 def predict_holdout_membership(all_windows):
     """Train on the earliest 80% and classify the held-out 20%."""
@@ -133,6 +157,9 @@ def predict_holdout_membership(all_windows):
         "train_metrics": evaluate_clustering(train_scaled, train_labels),
     }
 
+# *********************************************************************
+# Begin Streamlit Applicaiton
+# *********************************************************************
 
 def main():
     st.title("Industrial Alarm Analytics")
